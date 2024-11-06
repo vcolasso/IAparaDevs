@@ -10,6 +10,9 @@ def detect_pose_and_count_emotions_and_arms(video_path, output_path):
     pose = mp_pose.Pose()
     mp_drawing = mp.solutions.drawing_utils
 
+    # Carregar o classificador de rosto do OpenCV
+    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+
     # Capturar vídeo do arquivo especificado
     cap = cv2.VideoCapture(video_path)
 
@@ -23,26 +26,29 @@ def detect_pose_and_count_emotions_and_arms(video_path, output_path):
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = int(cap.get(cv2.CAP_PROP_FPS))
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    
+    #print("Total de frames:")
+    print(total_frames)
 
     # Definir o codec e criar o objeto VideoWriter
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Codec para MP4
     out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
     # Variáveis para contar movimentos dos braços
-    arm_up = False
-    arm_movements_count = 0
+    #arm_up = False
+    #arm_movements_count = 0
 
     # Função para verificar se o braço está levantado
-    def is_arm_up(landmarks):
-        left_eye = landmarks[mp_pose.PoseLandmark.LEFT_EYE.value]
-        right_eye = landmarks[mp_pose.PoseLandmark.RIGHT_EYE.value]
-        left_elbow = landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value]
-        right_elbow = landmarks[mp_pose.PoseLandmark.RIGHT_ELBOW.value]
+    #def is_arm_up(landmarks):
+    #    left_eye = landmarks[mp_pose.PoseLandmark.LEFT_EYE.value]
+    #    right_eye = landmarks[mp_pose.PoseLandmark.RIGHT_EYE.value]
+    #    left_elbow = landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value]
+    #    right_elbow = landmarks[mp_pose.PoseLandmark.RIGHT_ELBOW.value]
 
-        left_arm_up = left_elbow.y < left_eye.y
-        right_arm_up = right_elbow.y < right_eye.y
+    #    left_arm_up = left_elbow.y < left_eye.y
+    #    right_arm_up = right_elbow.y < right_eye.y
 
-        return left_arm_up or right_arm_up
+    #    return left_arm_up or right_arm_up
 
     # Loop para processar cada frame do vídeo com barra de progresso
     for _ in tqdm(range(total_frames), desc="Processando vídeo"):
@@ -56,49 +62,70 @@ def detect_pose_and_count_emotions_and_arms(video_path, output_path):
         # Converter o frame para RGB
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         
+        faces = face_cascade.detectMultiScale(rgb_frame, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+
+        #print(f"{len(faces)} rostos detectados")
+
+        # Para cada rosto detectado, realizar o reconhecimento
+        for (a, b, c, d) in faces:
+            # Extrair o rosto da imagem
+            face_img = frame[b:b+d, a:a+c]
+        
+            # Tentar realizar o reconhecimento com o DeepFace
+            try:
+                # Analisar o frame para detectar faces e expressões
+                result = DeepFace.analyze(face_img, actions=['emotion'], enforce_detection=False)
+
+                # Iterar sobre cada face detectada
+                for face in result:
+                    # Obter a caixa delimitadora da face
+                    x, y, w, h = face['region']['x'], face['region']['y'], face['region']['w'], face['region']['h']
+                    
+                    # Obter a emoção dominante
+                    dominant_emotion = face['dominant_emotion']
+                    
+                     # Desenhar um retângulo ao redor de cada rosto
+                    cv2.rectangle(face_img, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                    
+                    # Desenhar um retângulo ao redor da face
+                    #cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
+                    
+                    # Escrever a emoção dominante acima da face
+                    cv2.putText(face_img, dominant_emotion, (x, y+30), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (36, 255, 12), 2)
+                    
+                    #print("Resultado para o rosto detectado:")
+                    #print(result)
+            except Exception as e:
+                print(f"Erro no reconhecimento do rosto: {e}")
+
+        # Desenhar um retângulo ao redor de cada rosto
+        #cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
         
         ############################### para pegar emotions ###################################
         
-        # Analisar o frame para detectar faces e expressões
-        result = DeepFace.analyze(frame, actions=['emotion'], enforce_detection=False)
-
-        # Iterar sobre cada face detectada
-        for face in result:
-            # Obter a caixa delimitadora da face
-            x, y, w, h = face['region']['x'], face['region']['y'], face['region']['w'], face['region']['h']
-            
-            # Obter a emoção dominante
-            dominant_emotion = face['dominant_emotion']
-            
-            # Desenhar um retângulo ao redor da face
-            cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
-            
-            # Escrever a emoção dominante acima da face
-            cv2.putText(frame, dominant_emotion, (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (36, 255, 12), 2)
         
-        # Escrever o frame processado no vídeo de saída
-        out.write(frame)
+        
         
         ###########################################################################################
 
         # Processar o frame para detectar a pose
-        results = pose.process(rgb_frame)
+        #results = pose.process(rgb_frame)
 
         # Desenhar as anotações da pose no frame
-        if results.pose_landmarks:
-            mp_drawing.draw_landmarks(frame, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
+        #if results.pose_landmarks:
+        #    mp_drawing.draw_landmarks(frame, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
 
             # Verificar se o braço está levantado
-            if is_arm_up(results.pose_landmarks.landmark):
-                if not arm_up:
-                    arm_up = True
-                    arm_movements_count += 1
-            else:
-                arm_up = False
+        #    if is_arm_up(results.pose_landmarks.landmark):
+        #        if not arm_up:
+        #            arm_up = True
+        #            arm_movements_count += 1
+        #    else:
+        #        arm_up = False
 
             # Exibir a contagem de movimentos dos braços no frame
-            cv2.putText(frame, f'Movimentos dos bracos: {arm_movements_count}', (10, 30),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2, cv2.LINE_AA)
+        #    cv2.putText(frame, f'Movimentos dos bracos: {arm_movements_count}', (10, 30),
+        #                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2, cv2.LINE_AA)
 
         # Escrever o frame processado no vídeo de saída
         out.write(frame)
