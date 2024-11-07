@@ -99,10 +99,10 @@ def detect_pose_and_count_emotions_and_arms(video_path, output_path):
                     dominant_emotion = face['dominant_emotion']
                     
                      # Desenhar um retângulo ao redor de cada rosto
-                    #cv2.rectangle(face_img, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                    cv2.rectangle(face_img, (x, y), (x + w, y + h), (0, 255, 0), 2)
                     
                     # Desenhar um retângulo ao redor da face
-                    cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
+                    #cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
                     
                     # Escrever a emoção dominante acima da face
                     cv2.putText(face_img, dominant_emotion, (x, y+30), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (36, 255, 12), 2)
