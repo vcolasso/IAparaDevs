@@ -3,13 +3,14 @@ import mediapipe as mp
 import os
 from deepface import DeepFace
 from tqdm import tqdm
+from mtcnn import MTCNN
 
 def detect_pose_and_count_emotions_and_arms(video_path, output_path):
     # Inicializar o MediaPipe Pose
     mp_pose = mp.solutions.pose
     pose = mp_pose.Pose()
     mp_drawing = mp.solutions.drawing_utils
-
+    
     # Carregar o classificador de rosto do OpenCV
     face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
@@ -33,7 +34,11 @@ def detect_pose_and_count_emotions_and_arms(video_path, output_path):
     # Definir o codec e criar o objeto VideoWriter
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Codec para MP4
     out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
-
+    
+    ########################## outra lib para detectar rostos ############################
+    # Inicializar o detector MTCNN
+    detector = MTCNN()
+        
     # Variáveis para contar movimentos dos braços
     #arm_up = False
     #arm_movements_count = 0
@@ -62,7 +67,11 @@ def detect_pose_and_count_emotions_and_arms(video_path, output_path):
         # Converter o frame para RGB
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         
-        faces = face_cascade.detectMultiScale(rgb_frame, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+        #faces = face_cascade.detectMultiScale(rgb_frame, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+        
+        # Detectar rostos usando outra lib MTCNN
+        faces = detector.detect_faces(rgb_frame)
+
 
         #print(f"{len(faces)} rostos detectados")
 
