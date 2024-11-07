@@ -110,6 +110,8 @@ def detect_pose_and_count_emotions_and_arms(video_path, output_path):
                             cor = (255, 0, 0) #vermelho
                         if(dominant_emotion.lowercase() == 'surprise'):
                             cor = (255,20,147) #rosa
+                        if(dominant_emotion.lowercase() == 'sad'):
+                            cor = (255,255,0) #amarelo
                         
                         cv2.rectangle(face_img, (x, y), (x + w, y + h), cor, 2)
                         
