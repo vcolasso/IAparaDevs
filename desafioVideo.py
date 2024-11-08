@@ -66,6 +66,7 @@ def detect_pose_and_count_emotions_and_arms(video_path, output_path):
 
         # Converter o frame para RGB
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        rgb_frame = cv2.equalizeHist(rgb_frame) # Equalização de histograma para melhorar o contraste
         
         #faces = face_cascade.detectMultiScale(rgb_frame, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
         
