@@ -4,16 +4,17 @@ import os
 from deepface import DeepFace
 from tqdm import tqdm
 from mtcnn import MTCNN
-
+import dlib
 
 def detect_pose_and_count_emotions_and_arms(video_path, output_path):
+    
     # Inicializar o MediaPipe Pose
     mp_pose = mp.solutions.pose
     pose = mp_pose.Pose()
     mp_drawing = mp.solutions.drawing_utils
     
     # Carregar o classificador de rosto do OpenCV
-    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+    #face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
     # Capturar vídeo do arquivo especificado
     cap = cv2.VideoCapture(video_path)
@@ -67,7 +68,6 @@ def detect_pose_and_count_emotions_and_arms(video_path, output_path):
 
         # Converter o frame para RGB
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        rgb_frame = cv2.equalizeHist(rgb_frame) # Equalização de histograma para melhorar o contraste
         
         #faces = face_cascade.detectMultiScale(rgb_frame, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
         
@@ -102,13 +102,13 @@ def detect_pose_and_count_emotions_and_arms(video_path, output_path):
                         # Desenhar um retângulo ao redor de cada rosto
                         cor = (0, 255, 0)
                         if(dominant_emotion.lower() == 'happy'):
-                            cor = (0, 0, 255) 
+                            cor = (150, 25, 255) 
                         if(dominant_emotion.lower() == 'fear'):
-                            cor = (255, 0, 0) 
+                            cor = (255, 150, 25) 
                         if(dominant_emotion.lower() == 'surprise'):
-                            cor = (255,20,147)
+                            cor = (147,0,255)
                         if(dominant_emotion.lower() == 'sad'):
-                            cor = (255,215,0) 
+                            cor = (215,255,0) 
                         
                         cv2.rectangle(face_img, (x, y), (x + w, y + h), cor, 2)
                         
