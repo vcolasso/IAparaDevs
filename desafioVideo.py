@@ -7,7 +7,7 @@ from mtcnn import MTCNN
 import dlib
 
 def detect_pose_and_count_emotions_and_arms(video_path, output_path):
-    
+
     # Inicializar o MediaPipe Pose
     mp_pose = mp.solutions.pose
     pose = mp_pose.Pose()
@@ -72,7 +72,13 @@ def detect_pose_and_count_emotions_and_arms(video_path, output_path):
         #faces = face_cascade.detectMultiScale(rgb_frame, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
         
         # Detectar rostos usando outra lib MTCNN
-        faces = detector.detect_faces(rgb_frame)
+        faces = detector.detect_faces(rgb_frame, min_face_size=20, 
+                                    min_size=10,  # Detect smaller faces
+                                    scale_factor=0.8,
+                                    threshold_pnet=0.8,  # More proposals from PNet
+                                    threshold_rnet=0.6,  # Loosen RNet filtering
+                                    threshold_onet=0.85   # More final faces accepted by ONet
+                                    )
         
         #print(f"{len(faces)} rostos detectados")
 
@@ -87,8 +93,6 @@ def detect_pose_and_count_emotions_and_arms(video_path, output_path):
                 # Analisar o frame para detectar faces e expressões
                 result = DeepFace.analyze(face_img, actions=['emotion'], enforce_detection=False)
 
-                # Iterar sobre cada face detectada
-                min_width, min_height = 90, 90  # por exemplo
                 for face in result:
                     # Obter a caixa delimitadora da face
                     x, y, w, h = face['region']['x'], face['region']['y'], face['region']['w'], face['region']['h']
@@ -96,28 +100,25 @@ def detect_pose_and_count_emotions_and_arms(video_path, output_path):
                     # Obter a emoção dominante
                     dominant_emotion = face['dominant_emotion']
                     
-                    if w > min_width and h > min_height:
-                    # Só considera como rosto se passar pelo filtro de tamanho
+                    # Desenhar um retângulo ao redor de cada rosto
+                    cor = (0, 255, 0)
+                    if(dominant_emotion.lower() == 'happy'):
+                        cor = (150, 25, 255) 
+                    if(dominant_emotion.lower() == 'fear'):
+                        cor = (255, 150, 25) 
+                    if(dominant_emotion.lower() == 'surprise'):
+                        cor = (147,0,255)
+                    if(dominant_emotion.lower() == 'sad'):
+                        cor = (215,255,0) 
                     
-                        # Desenhar um retângulo ao redor de cada rosto
-                        cor = (0, 255, 0)
-                        if(dominant_emotion.lower() == 'happy'):
-                            cor = (150, 25, 255) 
-                        if(dominant_emotion.lower() == 'fear'):
-                            cor = (255, 150, 25) 
-                        if(dominant_emotion.lower() == 'surprise'):
-                            cor = (147,0,255)
-                        if(dominant_emotion.lower() == 'sad'):
-                            cor = (215,255,0) 
-                        
-                        cv2.rectangle(face_img, (x, y), (x + w, y + h), cor, 2)
-                        
-                        # Desenhar um retângulo ao redor da face
-                        #cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
-                        #cv2.rectangle(face_img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                        
-                        # Escrever a emoção dominante acima da face
-                        cv2.putText(face_img, dominant_emotion, (x, y+20), cv2.FONT_ITALIC, 0.9, cor, 2)
+                    cv2.rectangle(face_img, (x, y), (x + w, y + h), cor, 2)
+                    
+                    # Desenhar um retângulo ao redor da face
+                    #cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
+                    #cv2.rectangle(face_img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    
+                    # Escrever a emoção dominante acima da face
+                    cv2.putText(face_img, dominant_emotion, (x, y+20), cv2.FONT_ITALIC, 0.9, cor, 2)
                     
                         #print("Resultado para o rosto detectado:")
                         #print(result)
