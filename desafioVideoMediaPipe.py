@@ -200,6 +200,7 @@ def detect_and_analyze_faces(video_path, output_path):
     cap.release()
     out.release()
     cv2.destroyAllWindows()
+    #print(person_movements)
 
     
 # Caminho para o vídeo de entrada e saída
