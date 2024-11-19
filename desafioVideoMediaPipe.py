@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import mediapipe as mp
 import os
-
+import torch
 from deepface import DeepFace
 
 # Inicializa os módulos de detecção de rosto e desenho do MediaPipe
@@ -12,6 +12,25 @@ mp_drawing = mp.solutions.drawing_utils
 # Inicializar o MediaPipe Pose
 mp_pose = mp.solutions.pose
 pose = mp_pose.Pose()
+
+# Carregar modelo YOLOv5 pré-treinado
+model = torch.hub.load('ultralytics/yolov5', 'yolov5s')
+
+# Função para verificar se o braço está levantado
+def is_arm_up(landmarks):
+    
+    #Verifica se o braço esquerdo ou direito está levantado com base na posição dos punhos acima dos ombros.
+    left_shoulder = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value]
+    right_shoulder = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value]
+    left_wrist = landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value]
+    right_wrist = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value]
+
+    # Verifica se o punho está acima do ombro correspondente
+    left_arm_up = left_wrist.y < left_shoulder.y
+    right_arm_up = right_wrist.y < right_shoulder.y
+
+    # Retorna True se qualquer braço estiver levantado
+    return left_arm_up or right_arm_up
 
 # Função para detectar e analisar rostos com DeepFace
 def detect_and_analyze_faces(video_path, output_path):
@@ -29,6 +48,9 @@ def detect_and_analyze_faces(video_path, output_path):
     frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = cap.get(cv2.CAP_PROP_FPS)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    # Dicionário para armazenar o estado de cada pessoa
+    person_movements = {}
     
     #print("Total de frames:")
     print(f'\ntotal de frames: {total_frames}')
@@ -43,41 +65,30 @@ def detect_and_analyze_faces(video_path, output_path):
 
         while cap.isOpened():
 
-            success, image = cap.read() # Lê um frame do vídeo
+            success, frame = cap.read() # Lê um frame do vídeo
             if not success: # Sai do loop se a leitura falhar (fim do vídeo)
                 break
 
-            # Impede que o MediaPipe modifique a imagem original diretamente (melhora o desempenho)
-            image.flags.writeable = False
+            # Impede que o MediaPipe modifique a framem original diretamente (melhora o desempenho)
+            frame.flags.writeable = False
 
             # Converte a imagem de BGR (OpenCV) para RGB (MediaPipe)
-            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
             # Processa a imagem para detectar rostos
-            results = face_detection.process(image)
+            results = face_detection.process(frame)
 
             # Permite a modificação da imagem novamente
-            image.flags.writeable = True
+            frame.flags.writeable = True
 
             # Converte a imagem de volta para BGR para exibir com OpenCV
-            image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
             # Variáveis para contar movimentos dos braços
             arm_up = False
             arm_movements_count = 0
 
-            # Função para verificar se o braço está levantado
-            def is_arm_up(landmarks):
-
-                left_eye = landmarks[mp_pose.PoseLandmark.LEFT_EYE.value]
-                right_eye = landmarks[mp_pose.PoseLandmark.RIGHT_EYE.value]
-                left_elbow = landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value]
-                right_elbow = landmarks[mp_pose.PoseLandmark.RIGHT_ELBOW.value]
-                left_arm_up = left_elbow.y < left_eye.y
-                right_arm_up = right_elbow.y < right_eye.y
-                return left_arm_up or right_arm_up
-
-            # Desenha os retângulos de detecção na imagem
+            # Desenha os retângulos de detecção de rosto na imagem
             if results.detections: # verifica se encontrou algum rosto
 
                 for detection in results.detections: # Itera sobre as detecções
@@ -86,11 +97,11 @@ def detect_and_analyze_faces(video_path, output_path):
 
                     # Obtém as coordenadas da detecção
                     bboxC = detection.location_data.relative_bounding_box
-                    ih, iw, _ = image.shape
+                    ih, iw, _ = frame.shape
                     x, y, w, h = int(bboxC.xmin * iw), int(bboxC.ymin * ih), int(bboxC.width * iw), int(bboxC.height * ih)
 
                     # Recorta o rosto detectado
-                    face_image = image[y:y+h, x:x+w]
+                    face_image = frame[y:y+h, x:x+w]
 
                     try:
                         # Usa o DeepFace para detectar emoções
@@ -120,40 +131,68 @@ def detect_and_analyze_faces(video_path, output_path):
                                 cor = (215,255,0) 
 
                             # Desenha o bounding box
-                            cv2.rectangle(image, (x, y), (x + w, y + h), cor, 2)
+                            cv2.rectangle(frame, (x, y), (x + w, y + h), cor, 2)
 
                             # Exibe a emoção detectada no rosto
-                            cv2.putText(image, emotion, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, cor, 2, cv2.LINE_AA)
+                            cv2.putText(frame, emotion, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, cor, 2, cv2.LINE_AA)
 
                     except Exception as e:
                         print(f"Erro ao analisar emoção: {e}")
 
 
-            # Processar o frame para detectar a pose
-            results_arms_detection = pose.process(image)
+            # Detectar múltiplas pessoas no quadro
+            results_person_detection = model(frame)  # YOLOv5 detecta objetos no quadro
+            detections = results_person_detection.pandas().xyxy[0]
 
-            # Desenhar as anotações da pose no frame
-            if results_arms_detection.pose_landmarks:
+            for index, det in detections.iterrows():
 
-                mp_drawing.draw_landmarks(image, results_arms_detection.pose_landmarks, mp_pose.POSE_CONNECTIONS)
+                if det['name'] == 'person':  # Foco em pessoas
+                    xmin, ymin, xmax, ymax = int(det['xmin']), int(det['ymin']), int(det['xmax']), int(det['ymax'])
+                    person_roi = frame[ymin:ymax, xmin:xmax]  # Recorte da região da pessoa
 
-                # Verificar se o braço está levantado
-                if is_arm_up(results_arms_detection.pose_landmarks.landmark):
-                    if not arm_up:
-                        arm_up = True
-                        arm_movements_count += 1
-                else:
-                    arm_up = False
+                    # Criar ID único com base nas coordenadas
+                    person_id = f"{xmin}_{ymin}_{xmax}_{ymax}"
+                    if person_id not in person_movements:
+                        person_movements[person_id] = {"arm_up": False, "movements": 0}
 
-                # Exibir a contagem de movimentos dos braços no frame
-                cv2.putText(image, f'Movimentos dos bracos: {arm_movements_count}', (10, 30),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2, cv2.LINE_AA)
+                    # Processar pose da pessoa
+                    person_rgb = cv2.cvtColor(person_roi, cv2.COLOR_BGR2RGB)
+                    results_pose = pose.process(person_rgb)
+
+                    if results_pose.pose_landmarks:
+                        # Redimensionar coordenadas para o quadro original
+                        h, w, _ = person_roi.shape
+                        for landmark in results_pose.pose_landmarks.landmark:
+                            cx = int(xmin + landmark.x * w)
+                            cy = int(ymin + landmark.y * h)
+                            cv2.circle(frame, (cx, cy), 5, (0, 255, 0), -1)
+
+                        # Desenhar a pose
+                        #mp_drawing.draw_landmarks(
+                        #    image,
+                        #    results_pose.pose_landmarks,
+                        #    mp_pose.POSE_CONNECTIONS,
+                        #    mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2, circle_radius=2),
+                        #)
+
+                        # Verificar se o braço está levantado
+                        if is_arm_up(results_pose.pose_landmarks.landmark):
+                            if not person_movements[person_id]["arm_up"]:
+                                person_movements[person_id]["arm_up"] = True
+                                person_movements[person_id]["movements"] += 1
+                        else:
+                            person_movements[person_id]["arm_up"] = False
+
+                        # Exibir contagem de movimentos no quadro
+                        movement_text = f"Movimentos: {person_movements[person_id]['movements']}"
+                        cv2.putText(frame, movement_text, (xmin, ymin - 10), cv2.FONT_ITALIC, 0.6, (255, 150, 120), 2)
+            
             
             # Escrever o frame processado no vídeo de saída
-            out.write(image)
+            out.write(frame)
 
             # Exibir o frame processado
-            cv2.imshow('Video', image)
+            cv2.imshow('Video', frame)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
 
