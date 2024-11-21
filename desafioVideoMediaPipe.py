@@ -13,6 +13,13 @@ mp_drawing = mp.solutions.drawing_utils
 mp_pose = mp.solutions.pose
 pose = mp_pose.Pose()
 
+def gravar_arquivo_resumo (path, resumo_texto):
+    with open(path,'w') as f:
+        for linha in resumo_texto:
+            f.write('{}\n'.format(linha))
+        f.close()
+
+
 # Carregar modelo YOLOv5 pré-treinado
 model = torch.hub.load('ultralytics/yolov5', 'yolov5s')
 
@@ -34,6 +41,16 @@ def is_arm_up(landmarks):
 
 # Função para detectar e analisar rostos com DeepFace
 def detect_and_analyze_faces(video_path, output_path):
+    
+    # inicia contadores de expressões
+    count_happy = 0
+    count_fear = 0
+    count_surprise = 0
+    count_sad = 0
+    count_neutral = 0
+    count_angry = 0
+    # Variável para contar movimentos 
+    total_movimentos = 0
 
     # Capturar vídeo do arquivo especificado
     cap = cv2.VideoCapture(video_path)
@@ -51,10 +68,7 @@ def detect_and_analyze_faces(video_path, output_path):
 
     # Dicionário para armazenar o estado de cada pessoa
     person_movements = {}
-    
-    #print("Total de frames:")
-    print(f'\ntotal de frames: {total_frames}')
-
+        
     # Definir o codec e criar o objeto VideoWriter
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Codec para MP4
     out = cv2.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
@@ -83,11 +97,7 @@ def detect_and_analyze_faces(video_path, output_path):
 
             # Converte a imagem de volta para BGR para exibir com OpenCV
             frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-
-            # Variáveis para contar movimentos dos braços
-            arm_up = False
-            arm_movements_count = 0
-
+           
             # Desenha os retângulos de detecção de rosto na imagem
             if results.detections: # verifica se encontrou algum rosto
 
@@ -123,12 +133,22 @@ def detect_and_analyze_faces(video_path, output_path):
                             cor = (0, 255, 0)
                             if(emotion.lower() == 'happy'):
                                 cor = (150, 25, 255) 
+                                count_happy += 1
                             if(emotion.lower() == 'fear'):
                                 cor = (255, 150, 25) 
+                                count_fear += 1
                             if(emotion.lower() == 'surprise'):
                                 cor = (147,0,255)
+                                count_surprise += 1
                             if(emotion.lower() == 'sad'):
                                 cor = (215,255,0) 
+                                count_sad += 1
+                            if(emotion.lower() == 'neutral'):
+                                cor = (225,255,0) 
+                                count_neutral += 1
+                            if(emotion.lower() == 'angry'):
+                                cor = (100,255,0) 
+                                count_angry += 1
 
                             # Desenha o bounding box
                             cv2.rectangle(frame, (x, y), (x + w, y + h), cor, 2)
@@ -180,12 +200,16 @@ def detect_and_analyze_faces(video_path, output_path):
                             if not person_movements[person_id]["arm_up"]:
                                 person_movements[person_id]["arm_up"] = True
                                 person_movements[person_id]["movements"] += 1
+                                total_movimentos +=1
+                                # Exibir contagem de movimentos no quadro
+                                movement_text = f"Movimento detectado "
+                                cv2.putText(frame, movement_text, (10, 20), cv2.FONT_ITALIC, 0.6, (255, 150, 120), 2)
                         else:
                             person_movements[person_id]["arm_up"] = False
 
                         # Exibir contagem de movimentos no quadro
-                        movement_text = f"Movimentos: {person_movements[person_id]['movements']}"
-                        cv2.putText(frame, movement_text, (xmin, ymin - 10), cv2.FONT_ITALIC, 0.6, (255, 150, 120), 2)
+                        # movement_text = f"Movimentos detectado {person_movements[person_id]['movements']}"
+                        # cv2.putText(frame, movement_text, (xmin, ymin - 10), cv2.FONT_ITALIC, 0.6, (255, 150, 120), 2)
             
             
             # Escrever o frame processado no vídeo de saída
@@ -201,7 +225,24 @@ def detect_and_analyze_faces(video_path, output_path):
     out.release()
     cv2.destroyAllWindows()
     #print(person_movements)
-
+    #gravando resumo
+    resumo = []
+    resumo.append('Total de frames: ' + str(total_frames))
+    resumo.append('Total de movimentos: ' + str(total_movimentos))
+    resumo.append('Total de felizes: ' + str(count_happy))
+    resumo.append('Total de medos: ' + str(count_fear))
+    resumo.append('Total de surpresas: ' + str(count_surprise))
+    resumo.append('Total de tristes: ' + str(count_sad))
+    resumo.append('Total de neutros: ' + str(count_neutral))
+    resumo.append('Total de nervosos: ' + str(count_angry))
+    
+    #Exibindo totais 
+    for texto in resumo:
+        print (texto)
+    
+    #Gravando arquivo de resumo
+    gravar_arquivo_resumo (os.path.join(script_dir, 'resumo.txt'), resumo)
+    
     
 # Caminho para o vídeo de entrada e saída
 script_dir = os.path.dirname(os.path.abspath(__file__))
