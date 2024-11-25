@@ -1,22 +1,16 @@
-FIAP - Pós IA para DEVs
+# FIAP - Pós IA para DEVs
 
-Tech Challenge - fase 4
+# Tech Challenge - fase 4
 
-Componentes do grupo 2:
-Wesley Aoyama Silva
-wesleyaoyama@correios.com.br
+# FIAP-Tech-Challenge-Fase-4-Grupo-2
 
-Gerdson Cunha Pinheiro
-gerdsoncunha@gmail.com
+## Integrantes do Grupo 2
 
-Vanderci José Colasso
-vcolasso@correios.com.br
-
-Rogério Maia de Queiroz Lessa
-rogeriomaia@correios.com.br
-
-Rafael Valentim Fonseca
-rvalentim@correios.com.br
+* **Wesley Aoyama Silva** - wesleyaoyama@correios.com.br
+* **Gerdson Cunha Pinheiro** - gerdsoncunha@gmail.com
+* **Vanderci José Colasso** - vcolasso@correios.com.br
+* **Rogério Maia de Queiroz Lessa** - rogeriomaia@correios.com.br
+* **Rafael Valentim Fonseca** - rvalentim@correios.com.br 
 
 
 Instruções para executar o código:
