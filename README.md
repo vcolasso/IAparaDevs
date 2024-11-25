@@ -2,13 +2,21 @@ FIAP - Pós IA para DEVs
 
 Tech Challenge - fase 4
 
-Componentes do grupo:
-Gerdson Cunha Pinheiro
-Rafael Valentim Fonseca
-Rogério Maia de Queiroz
-Vanderci José Colasso
+Componentes do grupo 2:
 Wesley Aoyama Silva
+wesleyaoyama@correios.com.br
 
+Gerdson Cunha Pinheiro
+gerdsoncunha@gmail.com
+
+Vanderci José Colasso
+vcolasso@correios.com.br
+
+Rogério Maia de Queiroz Lessa
+rogeriomaia@correios.com.br
+
+Rafael Valentim Fonseca
+rvalentim@correios.com.br
 Instruções para executar o código:
 
 1) Executar o pip install de todas as bibliotecas que estão no import:
