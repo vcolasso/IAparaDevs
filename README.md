@@ -1,7 +1,3 @@
-# FIAP - Pós IA para DEVs
-
-# Tech Challenge - fase 4
-
 # FIAP-Tech-Challenge-Fase-4-Grupo-2
 
 ## Integrantes do Grupo 2
