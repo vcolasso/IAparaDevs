@@ -17,6 +17,8 @@ rogeriomaia@correios.com.br
 
 Rafael Valentim Fonseca
 rvalentim@correios.com.br
+
+
 Instruções para executar o código:
 
 1) Executar o pip install de todas as bibliotecas que estão no import:
