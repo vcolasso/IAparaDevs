@@ -4,6 +4,7 @@ import mediapipe as mp
 import os
 import torch
 from deepface import DeepFace
+import math
 
 # Inicializa os módulos de detecção de rosto e desenho do MediaPipe
 mp_face_detection = mp.solutions.face_detection
@@ -12,6 +13,51 @@ mp_drawing = mp.solutions.drawing_utils
 # Inicializar o MediaPipe Pose
 mp_pose = mp.solutions.pose
 pose = mp_pose.Pose()
+
+# Inicializa o MediaPipe Face Mesh
+mp_face_mesh = mp.solutions.face_mesh
+face_mesh = mp_face_mesh.FaceMesh(static_image_mode=False, max_num_faces=1, min_detection_confidence=0.5)
+
+# Função para calcular a distância euclidiana
+def euclidean_distance(point1, point2):
+    return math.sqrt((point1[0] - point2[0]) ** 2 + (point1[1] - point2[1]) ** 2)
+
+# Função para detectar caretas
+def is_grimace(landmarks, image_width, image_height):
+    # Convertendo landmarks para coordenadas na imagem
+    points = [(int(lm.x * image_width), int(lm.y * image_height)) for lm in landmarks]
+
+    # Definindo landmarks importantes
+    left_eye = points[159]  # Ponto da pálpebra superior do olho esquerdo
+    right_eye = points[386]  # Pálpebra superior do olho direito
+    mouth_left = points[61]  # Canto esquerdo da boca
+    mouth_right = points[291]  # Canto direito da boca
+    mouth_top = points[13]  # Centro superior da boca
+    mouth_bottom = points[14]  # Centro inferior da boca
+
+    # Medir proporções da boca
+    mouth_width = euclidean_distance(mouth_left, mouth_right)
+    mouth_height = euclidean_distance(mouth_top, mouth_bottom)
+
+    # Detecção de caretas (boca exageradamente aberta)
+    if mouth_height / mouth_width > 0.6:  # Limite ajustável
+        return True
+
+    # Detecção de sobrancelhas levantadas (opcional)
+    left_eyebrow = points[70]  # Acima do olho esquerdo
+    right_eyebrow = points[300]  # Acima do olho direito
+    left_eyebrow_distance = euclidean_distance(left_eye, left_eyebrow)
+    right_eyebrow_distance = euclidean_distance(right_eye, right_eyebrow)
+
+    if left_eyebrow_distance > 0.1 * image_height or right_eyebrow_distance > 0.1 * image_height:  # Limite ajustável
+        return True
+
+    # Caretas assimétricas (canto da boca muito deslocado)
+    mouth_asymmetry = abs(mouth_left[1] - mouth_right[1])
+    if mouth_asymmetry > 0.05 * image_height:  # Limite ajustável
+        return True
+
+    return False
 
 def gravar_arquivo_resumo (path, resumo_texto):
     with open(path,'w') as f:
@@ -22,6 +68,35 @@ def gravar_arquivo_resumo (path, resumo_texto):
 
 # Carregar modelo YOLOv5 pré-treinado
 model = torch.hub.load('ultralytics/yolov5', 'yolov5s')
+
+# Função para detectar anomalias corporais com base em ângulos
+def is_body_anomaly(landmarks):
+
+    # Verificar ângulos de articulações
+    def calculate_angle(a, b, c):
+        angle = math.degrees(
+            math.atan2(c.y - b.y, c.x - b.x) - math.atan2(a.y - b.y, a.x - b.x)
+        )
+        return abs(angle)
+
+    # Exemplos de ângulos anômalos
+    left_elbow_angle = calculate_angle(
+        landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value],
+        landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value],
+        landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value],
+    )
+    right_elbow_angle = calculate_angle(
+        landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value],
+        landmarks[mp_pose.PoseLandmark.RIGHT_ELBOW.value],
+        landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value],
+    )
+
+    if left_elbow_angle < 10 or left_elbow_angle > 170:
+        return True
+    if right_elbow_angle < 10 or right_elbow_angle > 170:
+        return True
+
+    return False
 
 # Função para verificar se o braço está levantado
 def is_arm_up(landmarks):
@@ -40,7 +115,7 @@ def is_arm_up(landmarks):
     return left_arm_up or right_arm_up
 
 # Função para detectar e analisar rostos com DeepFace
-def detect_and_analyze_faces(video_path, output_path):
+def detect_and_analyze_faces(video_path, output_path, anomalo_path):
     
     # inicia contadores de expressões
     count_happy = 0
@@ -49,6 +124,8 @@ def detect_and_analyze_faces(video_path, output_path):
     count_sad = 0
     count_neutral = 0
     count_angry = 0
+    count_anomalo_corporal = 0
+    count_anomalo_facial = 0
     # Variável para contar movimentos 
     total_movimentos = 0
 
@@ -72,6 +149,7 @@ def detect_and_analyze_faces(video_path, output_path):
     # Definir o codec e criar o objeto VideoWriter
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Codec para MP4
     out = cv2.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
+    out_anomalo = cv2.VideoWriter(anomalo_path, fourcc, fps, (frame_width, frame_height))
     
     #for _ in tqdm(range(total_frames), desc="Processando vídeo"):
     # Inicia a detecção de rostos com o modelo de curta distância (model_selection=1) e baixa confiança (para detectar mais rostos)
@@ -89,14 +167,24 @@ def detect_and_analyze_faces(video_path, output_path):
             # Converte a imagem de BGR (OpenCV) para RGB (MediaPipe)
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-            # Processa a imagem para detectar rostos
+
+            # Converte a imagem de volta para BGR para exibir com OpenCV
+            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+
+            results_anomalia = face_mesh.process(frame)
+
+            if results_anomalia.multi_face_landmarks:
+                for face_landmarks in results_anomalia.multi_face_landmarks:
+                    if is_grimace(face_landmarks.landmark, frame_width, frame_height):
+                        cv2.putText(frame, "Anomalia facial!", (30, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                        count_anomalo_facial += 1
+
+                        # Processa a imagem para detectar rostos
             results = face_detection.process(frame)
 
             # Permite a modificação da imagem novamente
             frame.flags.writeable = True
 
-            # Converte a imagem de volta para BGR para exibir com OpenCV
-            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
            
             # Desenha os retângulos de detecção de rosto na imagem
             if results.detections: # verifica se encontrou algum rosto
@@ -126,6 +214,7 @@ def detect_and_analyze_faces(video_path, output_path):
                             emotion = analysis['dominant_emotion']
                         else:
                             emotion = "Desconhecido"
+                            
 
                         if len(emotion) > 0: 
 
@@ -150,11 +239,19 @@ def detect_and_analyze_faces(video_path, output_path):
                                 cor = (100,255,0) 
                                 count_angry += 1
 
+                            #if(emotion.lower() == 'desconhecido'):
+                            #    count_anomalo += 1
+                            #    cv2.putText(frame, "Anomalia Facial", (x, y - 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+                            #    out_anomalo.write(frame)
+
                             # Desenha o bounding box
                             cv2.rectangle(frame, (x, y), (x + w, y + h), cor, 2)
 
                             # Exibe a emoção detectada no rosto
                             cv2.putText(frame, emotion, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, cor, 2, cv2.LINE_AA)
+
+                        else:
+                            print("Não detectado\n")
 
                     except Exception as e:
                         print(f"Erro ao analisar emoção: {e}")
@@ -187,14 +284,6 @@ def detect_and_analyze_faces(video_path, output_path):
                             cy = int(ymin + landmark.y * h)
                             cv2.circle(frame, (cx, cy), 5, (0, 255, 0), -1)
 
-                        # Desenhar a pose
-                        #mp_drawing.draw_landmarks(
-                        #    image,
-                        #    results_pose.pose_landmarks,
-                        #    mp_pose.POSE_CONNECTIONS,
-                        #    mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2, circle_radius=2),
-                        #)
-
                         # Verificar se o braço está levantado
                         if is_arm_up(results_pose.pose_landmarks.landmark):
                             if not person_movements[person_id]["arm_up"]:
@@ -207,9 +296,10 @@ def detect_and_analyze_faces(video_path, output_path):
                         else:
                             person_movements[person_id]["arm_up"] = False
 
-                        # Exibir contagem de movimentos no quadro
-                        # movement_text = f"Movimentos detectado {person_movements[person_id]['movements']}"
-                        # cv2.putText(frame, movement_text, (xmin, ymin - 10), cv2.FONT_ITALIC, 0.6, (255, 150, 120), 2)
+                        if is_body_anomaly(results_pose.pose_landmarks.landmark):
+                            count_anomalo_corporal += 1
+                            cv2.putText(frame, "Anomalia Corporal", (xmin, ymin - 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+                            out_anomalo.write(frame)
             
             
             # Escrever o frame processado no vídeo de saída
@@ -223,6 +313,7 @@ def detect_and_analyze_faces(video_path, output_path):
     # Liberar a captura de vídeo e fechar todas as janelas
     cap.release()
     out.release()
+    out_anomalo.release()
     cv2.destroyAllWindows()
     #print(person_movements)
     #gravando resumo
@@ -235,12 +326,14 @@ def detect_and_analyze_faces(video_path, output_path):
     resumo.append('Total de tristes: ' + str(count_sad))
     resumo.append('Total de neutros: ' + str(count_neutral))
     resumo.append('Total de nervosos: ' + str(count_angry))
+    resumo.append('Total de anomalias faciais: ' + str(count_anomalo_facial))
+    resumo.append('Total de anomalias corporais: ' + str(count_anomalo_corporal))
     
     #Exibindo totais 
     for texto in resumo:
         print (texto)
     
-    #Gravando arquivo de resumo
+    #Gravando arqquivo de resumo
     gravar_arquivo_resumo (os.path.join(script_dir, 'resumo.txt'), resumo)
     
     
@@ -248,5 +341,6 @@ def detect_and_analyze_faces(video_path, output_path):
 script_dir = os.path.dirname(os.path.abspath(__file__))
 input_video_path = os.path.join(script_dir, 'desafio.mp4')  # Nome do vídeo de entrada
 output_video_path = os.path.join(script_dir, 'output_desafio.mp4')  # Nome do vídeo de saída
+anomalo_video_path = os.path.join(script_dir, 'anomalos.mp4')  # Nome do vídeo de saída (anômalos)
 # Processar o vídeo
-detect_and_analyze_faces(input_video_path, output_video_path)
+detect_and_analyze_faces(input_video_path, output_video_path, anomalo_video_path)
