@@ -5,18 +5,20 @@ import os
 import torch
 from deepface import DeepFace
 import math
+import random
 
-# Inicializa os módulos de detecção de rosto e desenho do MediaPipe
-mp_face_detection = mp.solutions.face_detection
-mp_drawing = mp.solutions.drawing_utils
 
-# Inicializar o MediaPipe Pose
+# Inicializar o MediaPipe Pose para detectar os movimentos
 mp_pose = mp.solutions.pose
 pose = mp_pose.Pose()
 
-# Inicializa o MediaPipe Face Mesh
-mp_face_mesh = mp.solutions.face_mesh
-face_mesh = mp_face_mesh.FaceMesh(static_image_mode=False, max_num_faces=1, min_detection_confidence=0.5)
+# Inicializa o MediaPipe para fazer reconhecimentos faciais
+mp_face_detection = mp.solutions.face_detection # Usar essa lib para detectar múltiplos rostos, é mais eficaz
+mp_face_mesh = mp.solutions.face_mesh # Usar essa lib para detectar as anomalias faciais
+face_mesh = mp_face_mesh.FaceMesh(static_image_mode=False, max_num_faces=6, min_detection_confidence=0.5, min_tracking_confidence=0.5)
+
+# Carregar modelo YOLOv5 pré-treinado para detectar múltiplas pessoas
+model = torch.hub.load('ultralytics/yolov5', 'yolov5s')
 
 # Função para calcular a distância euclidiana
 def euclidean_distance(point1, point2):
@@ -66,38 +68,6 @@ def gravar_arquivo_resumo (path, resumo_texto):
         f.close()
 
 
-# Carregar modelo YOLOv5 pré-treinado
-model = torch.hub.load('ultralytics/yolov5', 'yolov5s')
-
-# Função para detectar anomalias corporais com base em ângulos
-def is_body_anomaly(landmarks):
-
-    # Verificar ângulos de articulações
-    def calculate_angle(a, b, c):
-        angle = math.degrees(
-            math.atan2(c.y - b.y, c.x - b.x) - math.atan2(a.y - b.y, a.x - b.x)
-        )
-        return abs(angle)
-
-    # Exemplos de ângulos anômalos
-    left_elbow_angle = calculate_angle(
-        landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value],
-        landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value],
-        landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value],
-    )
-    right_elbow_angle = calculate_angle(
-        landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value],
-        landmarks[mp_pose.PoseLandmark.RIGHT_ELBOW.value],
-        landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value],
-    )
-
-    if left_elbow_angle < 10 or left_elbow_angle > 170:
-        return True
-    if right_elbow_angle < 10 or right_elbow_angle > 170:
-        return True
-
-    return False
-
 # Função para verificar se o braço está levantado
 def is_arm_up(landmarks):
     
@@ -114,17 +84,21 @@ def is_arm_up(landmarks):
     # Retorna True se qualquer braço estiver levantado
     return left_arm_up or right_arm_up
 
+# Dicionário para traduzir emoções para PT-BR
+emotion_translation = {
+    "happy": "Feliz",
+    "sad": "Triste",
+    "neutral": "Neutro",
+    "angry": "Raiva",
+    "surprise": "Surpresa",
+    "fear": "Medo",
+    "disgust": "Nojo"
+}
+
 # Função para detectar e analisar rostos com DeepFace
-def detect_and_analyze_faces(video_path, output_path, anomalo_path):
+def detect_and_analyze_faces(video_path, output_path):
     
-    # inicia contadores de expressões
-    count_happy = 0
-    count_fear = 0
-    count_surprise = 0
-    count_sad = 0
-    count_neutral = 0
-    count_angry = 0
-    count_anomalo_corporal = 0
+    # inicia contadores
     count_anomalo_facial = 0
     # Variável para contar movimentos 
     total_movimentos = 0
@@ -145,13 +119,14 @@ def detect_and_analyze_faces(video_path, output_path, anomalo_path):
 
     # Dicionário para armazenar o estado de cada pessoa
     person_movements = {}
+
+    # Dicionário para armazenar as emoções detectadas
+    emotions = {}
         
     # Definir o codec e criar o objeto VideoWriter
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Codec para MP4
     out = cv2.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
-    out_anomalo = cv2.VideoWriter(anomalo_path, fourcc, fps, (frame_width, frame_height))
     
-    #for _ in tqdm(range(total_frames), desc="Processando vídeo"):
     # Inicia a detecção de rostos com o modelo de curta distância (model_selection=1) e baixa confiança (para detectar mais rostos)
     with mp_face_detection.FaceDetection(model_selection=1, min_detection_confidence=0.1) as face_detection:
 
@@ -161,48 +136,24 @@ def detect_and_analyze_faces(video_path, output_path, anomalo_path):
             if not success: # Sai do loop se a leitura falhar (fim do vídeo)
                 break
 
-            # Impede que o MediaPipe modifique a framem original diretamente (melhora o desempenho)
-            frame.flags.writeable = False
+            # Converte a imagem para RGB (MediaPipe)
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-            # Converte a imagem de BGR (OpenCV) para RGB (MediaPipe)
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            # Usando o face_detection para detectar os rostos, é mais eficaz que o face_mesh
+            results = face_detection.process(rgb_frame)
 
+            if results.detections:
+                for detection in results.detections:
 
-            # Converte a imagem de volta para BGR para exibir com OpenCV
-            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-
-            results_anomalia = face_mesh.process(frame)
-
-            if results_anomalia.multi_face_landmarks:
-                for face_landmarks in results_anomalia.multi_face_landmarks:
-                    if is_grimace(face_landmarks.landmark, frame_width, frame_height):
-                        cv2.putText(frame, "Anomalia facial!", (30, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-                        count_anomalo_facial += 1
-
-                        # Processa a imagem para detectar rostos
-            results = face_detection.process(frame)
-
-            # Permite a modificação da imagem novamente
-            frame.flags.writeable = True
-
-           
-            # Desenha os retângulos de detecção de rosto na imagem
-            if results.detections: # verifica se encontrou algum rosto
-
-                for detection in results.detections: # Itera sobre as detecções
-                    
-                    #mp_drawing.draw_detection(image, detection) # Desenha a detecção na imagem
-
-                    # Obtém as coordenadas da detecção
                     bboxC = detection.location_data.relative_bounding_box
                     ih, iw, _ = frame.shape
                     x, y, w, h = int(bboxC.xmin * iw), int(bboxC.ymin * ih), int(bboxC.width * iw), int(bboxC.height * ih)
 
-                    # Recorta o rosto detectado
+                    # Recortar o rosto para análise de emoção
                     face_image = frame[y:y+h, x:x+w]
 
                     try:
-                        # Usa o DeepFace para detectar emoções
+                        # Detecção de emoções com DeepFace
                         analysis = DeepFace.analyze(face_image, actions=['emotion'], enforce_detection=False)
                         
                         # Ajuste com base na estrutura do retorno
@@ -214,53 +165,46 @@ def detect_and_analyze_faces(video_path, output_path, anomalo_path):
                             emotion = analysis['dominant_emotion']
                         else:
                             emotion = "Desconhecido"
-                            
 
                         if len(emotion) > 0: 
 
-                            # Desenhar um retângulo ao redor de cada rosto
-                            cor = (0, 255, 0)
-                            if(emotion.lower() == 'happy'):
-                                cor = (150, 25, 255) 
-                                count_happy += 1
-                            if(emotion.lower() == 'fear'):
-                                cor = (255, 150, 25) 
-                                count_fear += 1
-                            if(emotion.lower() == 'surprise'):
-                                cor = (147,0,255)
-                                count_surprise += 1
-                            if(emotion.lower() == 'sad'):
-                                cor = (215,255,0) 
-                                count_sad += 1
-                            if(emotion.lower() == 'neutral'):
-                                cor = (225,255,0) 
-                                count_neutral += 1
-                            if(emotion.lower() == 'angry'):
-                                cor = (100,255,0) 
-                                count_angry += 1
+                            # Traduz a emoção para PT-BR
+                            emotion_pt = emotion_translation.get(emotion.lower(), "Desconhecido").lower()
 
-                            #if(emotion.lower() == 'desconhecido'):
-                            #    count_anomalo += 1
-                            #    cv2.putText(frame, "Anomalia Facial", (x, y - 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-                            #    out_anomalo.write(frame)
+                            if emotion_pt not in emotions:
+                                r_aleatorio = random.randint(0, 255)
+                                g_aleatorio = random.randint(0, 255)
+                                b_aleatorio = random.randint(0, 255)
+                                cor = (r_aleatorio, g_aleatorio, b_aleatorio)
+                                emotions[emotion_pt] = {"quantidade": 1, "cor": cor}
+                            else:
+                                emotions[emotion_pt]["quantidade"] += 1
 
-                            # Desenha o bounding box
-                            cv2.rectangle(frame, (x, y), (x + w, y + h), cor, 2)
-
-                            # Exibe a emoção detectada no rosto
-                            cv2.putText(frame, emotion, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, cor, 2, cv2.LINE_AA)
-
-                        else:
-                            print("Não detectado\n")
+                            cv2.rectangle(frame, (x, y), (x + w, y + h), emotions[emotion_pt]["cor"], 2)
+                            cv2.putText(frame, emotion_pt, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, emotions[emotion_pt]["cor"], 2, cv2.LINE_AA)
 
                     except Exception as e:
                         print(f"Erro ao analisar emoção: {e}")
 
 
+            # Detectar rostos para verificar anomalias
+            results_anomalia = face_mesh.process(rgb_frame)
+
+            if results_anomalia.multi_face_landmarks:
+
+                for face_landmarks in results_anomalia.multi_face_landmarks:
+
+                    # Vê se tem anomalia facial. Nesta lógica, um rosto deitado é considerado uma anomalia
+                    if is_grimace(face_landmarks.landmark, frame_width, frame_height):
+                        cv2.putText(frame, "Anomalia facial!", (30, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                        count_anomalo_facial += 1
+
+
             # Detectar múltiplas pessoas no quadro
-            results_person_detection = model(frame)  # YOLOv5 detecta objetos no quadro
+            results_person_detection = model(rgb_frame)  # YOLOv5 detecta objetos no quadro
             detections = results_person_detection.pandas().xyxy[0]
 
+            # Iterando sobre as pessoas detectadas
             for index, det in detections.iterrows():
 
                 if det['name'] == 'person':  # Foco em pessoas
@@ -292,42 +236,35 @@ def detect_and_analyze_faces(video_path, output_path, anomalo_path):
                                 total_movimentos +=1
                                 # Exibir contagem de movimentos no quadro
                                 movement_text = f"Movimento detectado "
-                                cv2.putText(frame, movement_text, (10, 20), cv2.FONT_ITALIC, 0.6, (255, 150, 120), 2)
+                                cv2.putText(frame, movement_text, (30, 70), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 255), 2)
+                                
                         else:
                             person_movements[person_id]["arm_up"] = False
 
-                        if is_body_anomaly(results_pose.pose_landmarks.landmark):
-                            count_anomalo_corporal += 1
-                            cv2.putText(frame, "Anomalia Corporal", (xmin, ymin - 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-                            out_anomalo.write(frame)
-            
-            
+                        
             # Escrever o frame processado no vídeo de saída
             out.write(frame)
 
             # Exibir o frame processado
             cv2.imshow('Video', frame)
+            # Apertando esc + q interrompe o processamento
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
 
     # Liberar a captura de vídeo e fechar todas as janelas
     cap.release()
     out.release()
-    out_anomalo.release()
     cv2.destroyAllWindows()
-    #print(person_movements)
+    
     #gravando resumo
     resumo = []
     resumo.append('Total de frames: ' + str(total_frames))
     resumo.append('Total de movimentos: ' + str(total_movimentos))
-    resumo.append('Total de felizes: ' + str(count_happy))
-    resumo.append('Total de medos: ' + str(count_fear))
-    resumo.append('Total de surpresas: ' + str(count_surprise))
-    resumo.append('Total de tristes: ' + str(count_sad))
-    resumo.append('Total de neutros: ' + str(count_neutral))
-    resumo.append('Total de nervosos: ' + str(count_angry))
     resumo.append('Total de anomalias faciais: ' + str(count_anomalo_facial))
-    resumo.append('Total de anomalias corporais: ' + str(count_anomalo_corporal))
+
+    for index, (key, value) in enumerate(emotions.items()):
+        resumo.append(f"Total de {key}:  {value['quantidade']}")
+
     
     #Exibindo totais 
     for texto in resumo:
@@ -341,6 +278,6 @@ def detect_and_analyze_faces(video_path, output_path, anomalo_path):
 script_dir = os.path.dirname(os.path.abspath(__file__))
 input_video_path = os.path.join(script_dir, 'desafio.mp4')  # Nome do vídeo de entrada
 output_video_path = os.path.join(script_dir, 'output_desafio.mp4')  # Nome do vídeo de saída
-anomalo_video_path = os.path.join(script_dir, 'anomalos.mp4')  # Nome do vídeo de saída (anômalos)
+
 # Processar o vídeo
-detect_and_analyze_faces(input_video_path, output_video_path, anomalo_video_path)
+detect_and_analyze_faces(input_video_path, output_video_path)
