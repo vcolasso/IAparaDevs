@@ -126,6 +126,7 @@ def detect_and_analyze_faces(video_path, output_path):
     # Definir o codec e criar o objeto VideoWriter
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Codec para MP4
     out = cv2.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
+    emocao_atual = ''
     
     # Inicia a detecção de rostos com o modelo de curta distância (model_selection=1) e baixa confiança (para detectar mais rostos)
     with mp_face_detection.FaceDetection(model_selection=1, min_detection_confidence=0.1) as face_detection:
@@ -178,7 +179,9 @@ def detect_and_analyze_faces(video_path, output_path):
                                 cor = (r_aleatorio, g_aleatorio, b_aleatorio)
                                 emotions[emotion_pt] = {"quantidade": 1, "cor": cor}
                             else:
-                                emotions[emotion_pt]["quantidade"] += 1
+                                if emocao_atual != emotions[emotion_pt] :                                    
+                                    emotions[emotion_pt]["quantidade"] += 1
+                                    emocao_atual = emotions[emotion_pt]   
 
                             cv2.rectangle(frame, (x, y), (x + w, y + h), emotions[emotion_pt]["cor"], 2)
                             cv2.putText(frame, emotion_pt, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, emotions[emotion_pt]["cor"], 2, cv2.LINE_AA)
