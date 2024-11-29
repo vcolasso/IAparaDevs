@@ -1,10 +1,10 @@
 Total de frames: 3326
-Total de movimentos: 1438
+Total de movimentos: 1454
 Total de anomalias faciais: 416
-Total de triste:  651
-Total de medo:  364
+Total de triste:  285
+Total de medo:  259
 Total de nojo:  1
-Total de neutro:  736
-Total de raiva:  87
-Total de feliz:  638
-Total de surpresa:  116
+Total de neutro:  323
+Total de raiva:  60
+Total de feliz:  214
+Total de surpresa:  31
