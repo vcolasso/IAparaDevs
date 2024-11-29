@@ -6,7 +6,7 @@ import torch
 from deepface import DeepFace
 import math
 import random
-
+ 
 
 # Inicializar o MediaPipe Pose para detectar os movimentos
 mp_pose = mp.solutions.pose
