@@ -15,3 +15,5 @@ Instruções para executar o código:
 3) O vídeo a ser analisado tem que estar na pasta do código desafio.py, com o nome desafio.mp4
 4) Ao executar o arquivo desafio.py, aparecerá uma tela com o processamento dos frames, e após o processamento, será gerado um arquivo chamado output_video.mp4, com o resultado do processamento do vídeo.
 5) Será gerado também um arquivo chamado resumo.txt, com os contadores das expressões faciais, anomalias e de movimentos detectados.
+
+Projeto completo em https://github.com/vcolasso/IAparaDevs 
